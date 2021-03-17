@@ -1,0 +1,75 @@
+
+sources:
+  usb_intenso:
+    ignore_paths:
+      - cache
+      - thumbnails
+    file_ignore_regex: []
+    path_ignore_regex: []
+    path: "D:\\"
+    disabled: true
+  home_dir:
+    ignore_paths:
+      - AppData
+    path: "C:\\Users\\John"
+    disabled: true
+  target_folder:
+    ignore_paths:
+    - debug/incremental
+    - debug/deps
+    - debug/build
+    file_ignore_regex:
+    - "^\\."
+    path_ignore_regex: []
+    path: "target"
+
+targets:
+  external_hdd: "F:\\"
+  test_target: "test_target"
+
+# evaluated in order, first matching filter determines file group for a file
+file_groups:
+  ignore_hidden_files_and_folders:
+    sources: all
+    filter:
+      file_name_matches_regex: "^\\."
+    rule: ignore
+  image_no_thumb:
+    sources: all
+    filter:
+      all:
+      - is_file
+      - has_extension: [png, jpg, jpeg]
+      - has_img_metadata
+      - img_size:
+          min: 300
+    rule:
+      copy_to:
+        target: "test_target"
+        path:
+          - file_name: "Images"
+          - img_date_time: "%Y-%m"
+          - img_date_time: "%d"
+          - file_name_with_extension
+  json:
+    sources: all
+    filter:
+      all:
+        - is_file
+        - has_extension: [json]
+    rule:
+      copy_to:
+        target: "test_target"
+        path:
+          - file_name: "JSON"
+          - created_time: "%Y-%m-%d"
+          - file_name_with_extension
+  misc:
+    sources: all
+    filter: is_file
+    rule:
+      copy_to:
+        target: "test_target"
+        path:
+          - file_name: "Misc"
+          - original_path

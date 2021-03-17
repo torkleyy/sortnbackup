@@ -1,0 +1,7 @@
+---
+target_folder:
+  "target\\.rustc_info.json": "test_target\\JSON\\2021-03-16\\.rustc_info.json"
+  "target\\CACHEDIR.TAG": "test_target\\Misc\\CACHEDIR.TAG"
+  "target\\debug\\.cargo-lock": "test_target\\Misc\\debug\\.cargo-lock"
+  "target\\debug\\sortnbackup.d": "test_target\\Misc\\debug\\sortnbackup.d"
+  "target\\debug\\sortnbackup.exe": "test_target\\Misc\\debug\\sortnbackup.exe"
