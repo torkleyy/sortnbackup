@@ -1,1 +1,0 @@
-A:\Workspace\sortnbackup\target\debug\sortnbackup.exe: A:\Workspace\sortnbackup\src\config.rs A:\Workspace\sortnbackup\src\date_time.rs A:\Workspace\sortnbackup\src\file_path.rs A:\Workspace\sortnbackup\src\img.rs A:\Workspace\sortnbackup\src\main.rs A:\Workspace\sortnbackup\src\util.rs
