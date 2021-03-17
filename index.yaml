@@ -1,7 +1,21 @@
 ---
+home_dir:
+  ignored: []
+  copy_instructions: {}
 target_folder:
-  "target\\.rustc_info.json": "test_target\\JSON\\2021-03-16\\.rustc_info.json"
-  "target\\CACHEDIR.TAG": "test_target\\Misc\\CACHEDIR.TAG"
-  "target\\debug\\.cargo-lock": "test_target\\Misc\\debug\\.cargo-lock"
-  "target\\debug\\sortnbackup.d": "test_target\\Misc\\debug\\sortnbackup.d"
-  "target\\debug\\sortnbackup.exe": "test_target\\Misc\\debug\\sortnbackup.exe"
+  ignored:
+    - "target\\.rustc_info.json"
+    - "target\\debug\\.cargo-lock"
+    - "target\\debug\\.fingerprint"
+    - "debug\\build"
+    - "debug\\deps"
+    - "debug\\incremental"
+  copy_instructions:
+    "target\\CACHEDIR.TAG": "test_target\\Misc\\CACHEDIR.TAG"
+    "target\\Ctapture.PNG": "test_target\\Thumbnails\\PNG\\Ctapture.PNG"
+    "target\\debug\\sortnbackup.d": "test_target\\Misc\\debug\\sortnbackup.d"
+    "target\\debug\\sortnbackup.exe": "test_target\\Misc\\debug\\sortnbackup.exe"
+    "target\\Frame-25702.png": "test_target\\Images\\png\\Frame-25702.png"
+usb_intenso:
+  ignored: []
+  copy_instructions: {}

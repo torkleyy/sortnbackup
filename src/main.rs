@@ -1,6 +1,7 @@
 use std::fs::{File, OpenOptions};
 
 use anyhow::{Context as _, Result};
+use serde::{Deserialize, Serialize};
 
 use crate::config::{Config, Rule, Source};
 use crate::file_path::FilePath;
@@ -9,6 +10,9 @@ use pathdiff::diff_paths;
 use std::path::{Path, PathBuf};
 use walkdir::WalkDir;
 use parking_lot::Mutex;
+use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
+use std::collections::HashMap;
+use std::sync::atomic::{AtomicU32, Ordering};
 
 mod config;
 mod date_time;
@@ -16,11 +20,15 @@ mod file_path;
 mod img;
 mod util;
 
-#[derive(Default)]
+#[derive(Default, Deserialize, Serialize)]
 struct Context {
     ignored: Vec<PathBuf>,
     copy_instructions: FakeMap<PathBuf, PathBuf>,
 }
+
+type Index = HashMap<String, Context>;
+
+type Progress = HashMap<String, AtomicU32>;
 
 fn app() -> Result<()> {
     let config: Config = serde_yaml::from_reader(
@@ -28,12 +36,19 @@ fn app() -> Result<()> {
     )
     .with_context(|| format!("Cannot parse config.yaml"))?;
 
-    let mut index = Mutex::new(FakeMap::new());
+    let index = build_index(&config)?;
+    let progress = index.keys().map(|source| (source.clone(), AtomicU32::new(0))).collect();
 
+    copy_files(&index, progress)?;
+
+    Ok(())
+}
+
+fn build_index(config: &Config) -> Result<Index> {
     println!("Building indices...");
-    for (name, source) in &config.sources {
+    let index = config.sources.par_iter().map(|(name, source)| {
         if source.disabled {
-            continue;
+            return Ok((name.to_owned(), Default::default()));
         }
 
         println!("Building index for source '{}'...", name);
@@ -42,31 +57,40 @@ fn app() -> Result<()> {
 
         walk_dir(&config, name, source, &source.path, &mut context)?;
 
-        index.lock().insert(name.to_owned(), context.copy_instructions);
-
         println!("Building index for source '{}'... Done", name);
-    }
 
-    let index = index.into_inner();
+        Ok((name.to_owned(), context))
+    }).collect::<Result<HashMap<String, Context>>>()?;
 
     serde_yaml::to_writer(File::create("index.yaml").with_context(|| format!("cannot open index.yaml"))?, &index)?;
 
     println!("Building indices... Done (saved to index.yaml)");
 
+    Ok(index)
+}
+
+fn copy_files(index: &Index, progress: Progress) -> Result<()> {
     println!("Copying files...");
 
-    for (source, from_to) in index.iter() {
-        for (from, to) in from_to.iter() {
+    index.par_iter().for_each(|(source, context)| {
+        let src_progress: &AtomicU32 = &progress[source];
+
+        for (from, to) in context.copy_instructions.iter().skip(src_progress.load(Ordering::SeqCst)) {
             let _ = std::fs::create_dir_all(to.parent().unwrap());
             if let Err(e) = std::fs::copy(from, to) {
                 eprintln!("Failed to copy {} to {}: {}", from.display(), to.display(), e);
             }
+            src_progress.fetch_add(1, Ordering::SeqCst);
+
+            // TODO: store progress
         }
-    }
+    });
 
     println!("Copying files... Done");
 
     Ok(())
+
+
 }
 
 fn walk_dir(
