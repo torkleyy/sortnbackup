@@ -10,7 +10,7 @@ use std::{
 use anyhow::{Context as _, Result};
 use fakemap::FakeMap;
 use humansize::FileSize;
-use indicatif::{ProgressBar, ProgressStyle};
+use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use parking_lot::{Condvar, Mutex};
 use pathdiff::diff_paths;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -198,6 +198,22 @@ fn app() -> Result<()> {
 
 fn build_index(config: &Config) -> Result<Index> {
     println!("Building indices...");
+
+    let multi_progress_bar = MultiProgress::new();
+    let sty = ProgressStyle::default_spinner()
+        // For more spinners check out the cli-spinners project:
+        // https://github.com/sindresorhus/cli-spinners/blob/master/spinners.json
+        .tick_strings(&[
+            "▹▹▹▹▹",
+            "▸▹▹▹▹",
+            "▹▸▹▹▹",
+            "▹▹▸▹▹",
+            "▹▹▹▸▹",
+            "▹▹▹▹▸",
+            "▪▪▪▪▪",
+        ])
+        .template("{spinner:.blue} {msg}");
+
     let index = config
         .sources
         .par_iter()
@@ -208,9 +224,15 @@ fn build_index(config: &Config) -> Result<Index> {
 
             println!("Building index for source '{}'...", name);
 
+            let pb = multi_progress_bar.add(ProgressBar::new_spinner());
+            pb.set_style(sty.clone());
+            pb.set_message(&format!("{}...", name));
+
             let mut context = Default::default();
 
-            walk_dir(&config, name, source, &source.path, &mut context)?;
+            walk_dir(&config, name, source, &source.path, &mut context, &pb)?;
+
+            pb.finish_with_message(&format!("{}... Done", name));
 
             println!("Building index for source '{}'... Done", name);
 
@@ -222,6 +244,8 @@ fn build_index(config: &Config) -> Result<Index> {
         File::create("index.yaml").with_context(|| format!("cannot create index.yaml"))?,
         &index,
     )?;
+
+    multi_progress_bar.join_and_clear().unwrap();
 
     println!("Building indices... Done (saved to index.yaml)");
 
@@ -297,6 +321,7 @@ fn walk_dir(
     src: &Source,
     dir_path: &Path,
     context: &mut Context,
+    pb: &ProgressBar,
 ) -> Result<()> {
     for entry in WalkDir::new(dir_path).min_depth(1).max_depth(1) {
         if let Ok(entry) = entry {
@@ -323,6 +348,8 @@ fn walk_dir(
                     &Rule::Ignore
                 }
             };
+
+            pb.tick();
 
             match rule {
                 Rule::Ignore => {
@@ -351,7 +378,7 @@ fn walk_dir(
                         .insert(fp.full_path, CopyInstruction { to, file_size });
                 }
                 Rule::Traverse => {
-                    walk_dir(config, src_name, src, &path, context)?;
+                    walk_dir(config, src_name, src, &path, context, pb)?;
                 }
                 Rule::LogFile {
                     target,
