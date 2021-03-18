@@ -8,7 +8,10 @@ use fakemap::FakeMap;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use crate::{date_time::DateTimeFormatString, file_path::FilePath, util::fix_cross_path};
+use crate::{
+    date_time::DateTimeFormatString, file_path::FilePath, util::fix_cross_path,
+};
+use humansize::file_size_opts::{FileSizeOpts, BINARY, DECIMAL};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -16,6 +19,8 @@ pub struct Config {
     pub file_groups: FakeMap<String, FileGroup>,
     pub sources: HashMap<String, Source>,
     pub targets: HashMap<String, PathBuf>,
+
+    pub settings: Settings,
 }
 
 impl Config {
@@ -40,6 +45,30 @@ impl Config {
         fp: &mut FilePath,
     ) -> Result<PathBuf> {
         PathElement::join_all(paths, fp, self.target(target)?.clone())
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct Settings {
+    pub file_size_style: FileSizeStyle,
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub enum FileSizeStyle {
+    #[serde(rename = "binary")]
+    Binary,
+    #[serde(rename = "decimal")]
+    Decimal,
+}
+
+impl FileSizeStyle {
+    pub fn to_file_size_opts(&self) -> &FileSizeOpts {
+        match self {
+            FileSizeStyle::Binary => &BINARY,
+            FileSizeStyle::Decimal => &DECIMAL,
+        }
     }
 }
 

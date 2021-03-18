@@ -1,12 +1,14 @@
 use std::fs::{File, OpenOptions};
-use std::io::{Write, stdout};
+use std::io::{stdout, Write};
 
 use anyhow::{Context as _, Result};
 use serde::{Deserialize, Serialize};
 
+use crate::cli::cli_options;
 use crate::config::{Config, Rule, Source};
 use crate::file_path::FilePath;
 use fakemap::FakeMap;
+use humansize::FileSize;
 use parking_lot::{Condvar, Mutex};
 use pathdiff::diff_paths;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -17,6 +19,7 @@ use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 use walkdir::WalkDir;
 
+mod cli;
 mod config;
 mod date_time;
 mod file_path;
@@ -26,36 +29,130 @@ mod util;
 #[derive(Default, Deserialize, Serialize)]
 struct Context {
     ignored: Vec<PathBuf>,
-    copy_instructions: FakeMap<PathBuf, PathBuf>,
+    copy_instructions: FakeMap<PathBuf, CopyInstruction>,
+    file_size_per_target: FakeMap<String, u64>,
+}
+
+#[derive(Deserialize, Serialize)]
+struct CopyInstruction {
+    to: PathBuf,
+    file_size: u64,
 }
 
 type Index = HashMap<String, Context>;
 
 type Progress = HashMap<String, AtomicU32>;
 
-fn app() -> Result<()> {
-    let config: Config = serde_yaml::from_reader(
+fn read_config() -> Result<Config> {
+    serde_yaml::from_reader(
         File::open("config.yaml").with_context(|| format!("cannot open config.yaml"))?,
     )
-    .with_context(|| format!("Cannot parse config.yaml"))?;
+    .with_context(|| format!("cannot parse config.yaml"))
+}
 
-    let index = build_index(&config)?;
+fn read_index() -> Result<Index> {
+    serde_yaml::from_reader(
+        File::open("index.yaml").with_context(|| format!("cannot open index.yaml"))?,
+    )
+    .with_context(|| format!("Cannot parse index.yaml"))
+}
 
-    print!("Continue? [y/N] ");
-    stdout().flush().unwrap();
+fn read_progress() -> Result<Progress> {
+    serde_yaml::from_reader(
+        File::open("progress.yaml").with_context(|| format!("cannot open progress.yaml"))?,
+    )
+    .with_context(|| format!("Cannot parse progress.yaml"))
+}
 
-    let mut buf = String::new();
-    stdin().read_line(&mut buf).unwrap();
+fn app() -> Result<()> {
+    let options = cli_options();
 
-    if !buf.trim().starts_with("Y") {
-        println!("Cancelled");
-        return Ok(());
+    let config: Config = read_config()?;
+
+    let index = if options.continue_ {
+        read_index()
+            .with_context(|| format!("cannot continue backup because index cannot be read"))?
+    } else {
+        build_index(&config).with_context(|| format!("failed to build index"))?
+    };
+
+    let progress = if options.continue_ {
+        read_progress()?
+    } else {
+        index
+            .keys()
+            .map(|source| (source.clone(), AtomicU32::new(0)))
+            .collect()
+    };
+
+    let fmt_size = |size: u64| {
+        size.file_size(config.settings.file_size_style.to_file_size_opts())
+            .unwrap()
+    };
+
+    println!("Summary:");
+    println!();
+
+    for (source, context) in &index {
+        println!("Source '{}'", source);
+        let total: u64 = context.file_size_per_target.values().cloned().sum();
+        println!("\tData to copy [all targets]: {}", fmt_size(total));
+        println!("\tData per target:");
+        for (target, size) in context.file_size_per_target.iter() {
+            println!("\t\tTo target '{}': {}", target, fmt_size(*size));
+        }
     }
 
-    let progress = index
-        .keys()
-        .map(|source| (source.clone(), AtomicU32::new(0)))
-        .collect();
+    println!();
+
+    index
+        .values()
+        .flat_map(|context| context.file_size_per_target.iter())
+        .fold(HashMap::new(), |mut map, (target, size)| {
+            *map.entry(target.clone()).or_default() += *size;
+
+            map
+        })
+        .iter()
+        .for_each(|(target, size)| {
+            println!("Target '{}' [{}]", target, fmt_size(*size));
+        });
+
+    let total = index
+        .values()
+        .flat_map(|context| context.copy_instructions.values().map(|ci| ci.file_size))
+        .sum();
+
+    println!();
+    if options.continue_ {
+        let remaining = index
+            .iter()
+            .flat_map(|(src, context)| {
+                context
+                    .copy_instructions
+                    .values()
+                    .skip(progress[src].load(Ordering::SeqCst) as usize)
+                    .map(|ci| ci.file_size)
+            })
+            .sum();
+
+        println!("Total data to copy (remaining): {} of {}", fmt_size(remaining), fmt_size(total));
+    } else {
+        println!("Total data to copy: {}", fmt_size(total));
+    }
+
+    if !options.yes {
+        print!("Continue? [y/N] ");
+        stdout().flush().unwrap();
+
+        let mut buf = String::new();
+        stdin().read_line(&mut buf).unwrap();
+
+        if !buf.trim().starts_with("Y") {
+            println!("Cancelled");
+            return Ok(());
+        }
+    }
 
     copy_files(&index, progress)?;
 
@@ -85,7 +182,7 @@ fn build_index(config: &Config) -> Result<Index> {
         .collect::<Result<HashMap<String, Context>>>()?;
 
     serde_yaml::to_writer(
-        File::create("index.yaml").with_context(|| format!("cannot open index.yaml"))?,
+        File::create("index.yaml").with_context(|| format!("cannot create index.yaml"))?,
         &index,
     )?;
 
@@ -117,7 +214,7 @@ fn copy_files(index: &Index, progress: Progress) -> Result<()> {
         index.par_iter().for_each(move |(source, context)| {
             let src_progress: &AtomicU32 = &progress[source];
 
-            for (from, to) in context
+            for (from, CopyInstruction { to, .. }) in context
                 .copy_instructions
                 .iter()
                 .skip(src_progress.load(Ordering::SeqCst) as usize)
@@ -185,11 +282,17 @@ fn walk_dir(
                 }
                 Rule::CopyExact { target } => {
                     let to = config.target(target)?.join(&fp.path);
-                    context.copy_instructions.insert(fp.full_path, to);
+                    let file_size = fp.metadata().map(|m| m.len()).unwrap_or(0);
+                    context
+                        .copy_instructions
+                        .insert(fp.full_path, CopyInstruction { to, file_size });
                 }
                 Rule::CopyTo { target, path } => {
                     let to = config.target_path(target, path, &mut fp)?;
-                    context.copy_instructions.insert(fp.full_path, to);
+                    let file_size = fp.metadata().map(|m| m.len()).unwrap_or(0);
+                    context
+                        .copy_instructions
+                        .insert(fp.full_path, CopyInstruction { to, file_size });
                 }
                 Rule::Traverse => {
                     walk_dir(config, src_name, src, &path, context)?;
