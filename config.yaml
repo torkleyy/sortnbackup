@@ -1,3 +1,6 @@
+settings:
+  file_size_style: decimal
+
 sources:
   usb_intenso:
     ignore_paths:

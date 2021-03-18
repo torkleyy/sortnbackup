@@ -30,7 +30,7 @@ mod util;
 struct Context {
     ignored: Vec<PathBuf>,
     copy_instructions: FakeMap<PathBuf, CopyInstruction>,
-    file_size_per_target: FakeMap<String, u64>,
+    file_size_per_target: HashMap<String, u64>,
 }
 
 #[derive(Deserialize, Serialize)]
@@ -94,12 +94,16 @@ fn app() -> Result<()> {
     println!();
 
     for (source, context) in &index {
+        if config.sources.get(source).map(|s| s.disabled).unwrap_or(false) { continue; }
+
         println!("Source '{}'", source);
         let total: u64 = context.file_size_per_target.values().cloned().sum();
         println!("\tData to copy [all targets]: {}", fmt_size(total));
-        println!("\tData per target:");
-        for (target, size) in context.file_size_per_target.iter() {
-            println!("\t\tTo target '{}': {}", target, fmt_size(*size));
+        if total > 0 {
+            println!("\tData per target:");
+            for (target, size) in context.file_size_per_target.iter() {
+                println!("\t\tTo target '{}': {}", target, fmt_size(*size));
+            }
         }
     }
 
@@ -202,7 +206,7 @@ fn copy_files(index: &Index, progress: Progress) -> Result<()> {
     rayon::scope(|scope| {
         scope.spawn(move |_scope| {
             while finished
-                .wait_for(&mut mutex.lock(), Duration::from_secs(30))
+                .wait_for(&mut mutex.lock(), Duration::from_secs(15))
                 .timed_out()
             {
                 if let Ok(file) = File::create("progress.yaml") {
@@ -283,6 +287,7 @@ fn walk_dir(
                 Rule::CopyExact { target } => {
                     let to = config.target(target)?.join(&fp.path);
                     let file_size = fp.metadata().map(|m| m.len()).unwrap_or(0);
+                    *context.file_size_per_target.entry(target.clone()).or_default() += file_size;
                     context
                         .copy_instructions
                         .insert(fp.full_path, CopyInstruction { to, file_size });
@@ -290,6 +295,7 @@ fn walk_dir(
                 Rule::CopyTo { target, path } => {
                     let to = config.target_path(target, path, &mut fp)?;
                     let file_size = fp.metadata().map(|m| m.len()).unwrap_or(0);
+                    *context.file_size_per_target.entry(target.clone()).or_default() += file_size;
                     context
                         .copy_instructions
                         .insert(fp.full_path, CopyInstruction { to, file_size });
