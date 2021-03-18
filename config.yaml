@@ -3,8 +3,6 @@ sources:
     ignore_paths:
       - cache
       - thumbnails
-    file_ignore_regex: [ ]
-    path_ignore_regex: [ ]
     path: "D:\\"
     disabled: true
   home_dir:
@@ -17,14 +15,14 @@ sources:
       - debug/incremental
       - debug/deps
       - debug/build
-    file_ignore_regex:
-      - "^\\."
-    path_ignore_regex: [ ]
     path: "target"
+    disabled: true
+  siege_clips:
+    path: "A:\\Videos\\Tom Clancy's Rainbow Six  Siege"
 
 targets:
-  external_hdd: "F:\\"
-  test_target: "test_target"
+  #external_hdd: "F:\\"
+  test_target: "D:\\test"
 
 # evaluated in order, first matching filter determines file group for a file
 file_groups:
@@ -33,6 +31,18 @@ file_groups:
     filter:
       file_name_matches_regex: "^\\."
     rule: ignore
+  videos:
+    sources: all
+    filter:
+      all:
+        - is_file
+        - has_extension: [mp4, mkv]
+    rule:
+      copy_to:
+        target: "test_target"
+        path:
+          - file_name: "Videos"
+          - file_name_with_extension
   image_no_thumb: # copy all images with a size of 300+ to test_target's Image folder
     sources: all
     filter:

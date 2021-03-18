@@ -1,4 +1,5 @@
 use std::fs::{File, OpenOptions};
+use std::io::{Write, stdout};
 
 use anyhow::{Context as _, Result};
 use serde::{Deserialize, Serialize};
@@ -6,13 +7,15 @@ use serde::{Deserialize, Serialize};
 use crate::config::{Config, Rule, Source};
 use crate::file_path::FilePath;
 use fakemap::FakeMap;
+use parking_lot::{Condvar, Mutex};
 use pathdiff::diff_paths;
-use std::path::{Path, PathBuf};
-use walkdir::WalkDir;
-use parking_lot::Mutex;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use std::collections::HashMap;
+use std::io::stdin;
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
+use std::time::Duration;
+use walkdir::WalkDir;
 
 mod config;
 mod date_time;
@@ -37,7 +40,22 @@ fn app() -> Result<()> {
     .with_context(|| format!("Cannot parse config.yaml"))?;
 
     let index = build_index(&config)?;
-    let progress = index.keys().map(|source| (source.clone(), AtomicU32::new(0))).collect();
+
+    print!("Continue? [y/N] ");
+    stdout().flush().unwrap();
+
+    let mut buf = String::new();
+    stdin().read_line(&mut buf).unwrap();
+
+    if !buf.trim().starts_with("Y") {
+        println!("Cancelled");
+        return Ok(());
+    }
+
+    let progress = index
+        .keys()
+        .map(|source| (source.clone(), AtomicU32::new(0)))
+        .collect();
 
     copy_files(&index, progress)?;
 
@@ -46,23 +64,30 @@ fn app() -> Result<()> {
 
 fn build_index(config: &Config) -> Result<Index> {
     println!("Building indices...");
-    let index = config.sources.par_iter().map(|(name, source)| {
-        if source.disabled {
-            return Ok((name.to_owned(), Default::default()));
-        }
+    let index = config
+        .sources
+        .par_iter()
+        .map(|(name, source)| {
+            if source.disabled {
+                return Ok((name.to_owned(), Default::default()));
+            }
 
-        println!("Building index for source '{}'...", name);
+            println!("Building index for source '{}'...", name);
 
-        let mut context = Default::default();
+            let mut context = Default::default();
 
-        walk_dir(&config, name, source, &source.path, &mut context)?;
+            walk_dir(&config, name, source, &source.path, &mut context)?;
 
-        println!("Building index for source '{}'... Done", name);
+            println!("Building index for source '{}'... Done", name);
 
-        Ok((name.to_owned(), context))
-    }).collect::<Result<HashMap<String, Context>>>()?;
+            Ok((name.to_owned(), context))
+        })
+        .collect::<Result<HashMap<String, Context>>>()?;
 
-    serde_yaml::to_writer(File::create("index.yaml").with_context(|| format!("cannot open index.yaml"))?, &index)?;
+    serde_yaml::to_writer(
+        File::create("index.yaml").with_context(|| format!("cannot open index.yaml"))?,
+        &index,
+    )?;
 
     println!("Building indices... Done (saved to index.yaml)");
 
@@ -72,25 +97,53 @@ fn build_index(config: &Config) -> Result<Index> {
 fn copy_files(index: &Index, progress: Progress) -> Result<()> {
     println!("Copying files...");
 
-    index.par_iter().for_each(|(source, context)| {
-        let src_progress: &AtomicU32 = &progress[source];
+    let mutex = Mutex::new(());
+    let finished = Condvar::new();
+    let finished = &finished;
+    let progress = &progress;
 
-        for (from, to) in context.copy_instructions.iter().skip(src_progress.load(Ordering::SeqCst)) {
-            let _ = std::fs::create_dir_all(to.parent().unwrap());
-            if let Err(e) = std::fs::copy(from, to) {
-                eprintln!("Failed to copy {} to {}: {}", from.display(), to.display(), e);
+    rayon::scope(|scope| {
+        scope.spawn(move |_scope| {
+            while finished
+                .wait_for(&mut mutex.lock(), Duration::from_secs(30))
+                .timed_out()
+            {
+                if let Ok(file) = File::create("progress.yaml") {
+                    let _ = serde_yaml::to_writer(file, &progress);
+                }
             }
-            src_progress.fetch_add(1, Ordering::SeqCst);
+        });
 
-            // TODO: store progress
-        }
+        index.par_iter().for_each(move |(source, context)| {
+            let src_progress: &AtomicU32 = &progress[source];
+
+            for (from, to) in context
+                .copy_instructions
+                .iter()
+                .skip(src_progress.load(Ordering::SeqCst) as usize)
+            {
+                let _ = std::fs::create_dir_all(to.parent().unwrap());
+                if let Err(e) = std::fs::copy(from, to) {
+                    eprintln!(
+                        "Failed to copy {} to {}: {}",
+                        from.display(),
+                        to.display(),
+                        e
+                    );
+                }
+                src_progress.fetch_add(1, Ordering::SeqCst);
+            }
+        });
+
+        finished.notify_all();
     });
+
+    let _ = std::fs::remove_file("progress.yaml");
+    let _ = std::fs::remove_file("index.yaml");
 
     println!("Copying files... Done");
 
     Ok(())
-
-
 }
 
 fn walk_dir(
@@ -146,16 +199,22 @@ fn walk_dir(
                     log_file,
                     full_path,
                 } => {
-                    use std::io::Write;
-
                     let log_file = config.target_path(target, log_file, &mut fp)?;
-                    let mut file = OpenOptions::new().create(true).append(true).open(&log_file).with_context(|| format!("Failed to open log file at {}", log_file.display()))?;
+                    let mut file = OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(&log_file)
+                        .with_context(|| {
+                            format!("Failed to open log file at {}", log_file.display())
+                        })?;
                     let log_line = if *full_path {
                         fp.full_path.display()
                     } else {
                         fp.path.display()
                     };
-                    writeln!(file, "{}", log_line).with_context(|| format!("Failed to write to log file {}", log_file.display()))?;
+                    writeln!(file, "{}", log_line).with_context(|| {
+                        format!("Failed to write to log file {}", log_file.display())
+                    })?;
                 }
             }
         } else {

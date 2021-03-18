@@ -2,7 +2,7 @@ use std::{convert::TryFrom, time::SystemTime};
 
 use chrono::{
     format::{Item, StrftimeItems},
-     Local,
+    Local,
 };
 use serde::{Deserialize, Serialize};
 

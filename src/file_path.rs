@@ -1,8 +1,4 @@
-use std::{
-    fs::{ Metadata},
-    path::{ PathBuf},
-    sync::Arc,
-};
+use std::{fs::Metadata, path::PathBuf, sync::Arc};
 
 use crate::img::ImageMetadata;
 

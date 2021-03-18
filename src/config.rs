@@ -8,12 +8,10 @@ use fakemap::FakeMap;
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
-use crate::{
-    date_time::DateTimeFormatString, file_path::FilePath,
-    util::fix_cross_path,
-};
+use crate::{date_time::DateTimeFormatString, file_path::FilePath, util::fix_cross_path};
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Config {
     pub file_groups: FakeMap<String, FileGroup>,
     pub sources: HashMap<String, Source>,
@@ -30,15 +28,23 @@ impl Config {
     }
 
     pub fn target(&self, target: &str) -> Result<&PathBuf> {
-        self.targets.get(target).ok_or_else(|| anyhow!("Unknown target: '{}'", target))
+        self.targets
+            .get(target)
+            .ok_or_else(|| anyhow!("Unknown target: '{}'", target))
     }
 
-    pub fn target_path(&self, target: &str, paths: &[PathElement], fp: &mut FilePath) -> Result<PathBuf> {
+    pub fn target_path(
+        &self,
+        target: &str,
+        paths: &[PathElement],
+        fp: &mut FilePath,
+    ) -> Result<PathBuf> {
         PathElement::join_all(paths, fp, self.target(target)?.clone())
     }
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct FileGroup {
     pub sources: SourceFilter,
     pub filter: FileFilter,
@@ -46,15 +52,17 @@ pub struct FileGroup {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub struct Source {
+    #[serde(default)]
     pub ignore_paths: Vec<PathBuf>,
     pub path: PathBuf,
-    pub file_groups: Option<Vec<String>>,
     #[serde(default)]
     pub disabled: bool,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub enum SourceFilter {
     #[serde(rename = "all")]
     All,
@@ -75,6 +83,7 @@ impl SourceFilter {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub enum FileFilter {
     #[serde(rename = "all")]
     All(Vec<FileFilter>),
@@ -165,6 +174,7 @@ impl FileFilter {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub enum Rule {
     #[serde(rename = "ignore")]
     Ignore,
@@ -186,6 +196,7 @@ pub enum Rule {
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
 pub enum PathElement {
     #[serde(rename = "file_name")]
     FileName(String),
@@ -234,9 +245,7 @@ impl PathElement {
         Ok(match self {
             PathElement::FileName(s) => s.into(),
             PathElement::OriginalPathWithoutFileName => fp.path.parent().unwrap().to_owned(),
-            PathElement::OriginalPath => {
-                fp.path.clone()
-            }
+            PathElement::OriginalPath => fp.path.clone(),
             PathElement::DirectParentFolder => {
                 fp.path.parent().unwrap().file_name().unwrap().into()
             }

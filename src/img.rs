@@ -2,9 +2,8 @@ use std::{fs::File, io::BufReader, path::Path, str::FromStr};
 
 use chrono::Local;
 use exif::{Field, In, Tag, Value};
-use serde::{Deserialize, Serialize};
-use std::fs::read;
 use immeta::Dimensions;
+use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Deserialize, PartialEq, Serialize)]
 pub struct ImageDimensions {
@@ -47,12 +46,9 @@ impl ImageMetadata {
 
     pub fn for_path(path: &Path) -> Option<Self> {
         let file = File::open(path).ok()?;
-        let exif = match exif::Reader::new()
-            .read_from_container(&mut BufReader::new(&file)) {
+        let exif = match exif::Reader::new().read_from_container(&mut BufReader::new(&file)) {
             Ok(x) => x,
-            Err(exif::Error::NotFound(_)) => {
-                return Self::from_immeta(path)
-            }
+            Err(exif::Error::NotFound(_)) => return Self::from_immeta(path),
             _ => return None,
         };
 
