@@ -12,6 +12,7 @@ use crate::{
     date_time::DateTimeFormatString, file_path::FilePath, util::fix_cross_path,
 };
 use humansize::file_size_opts::{FileSizeOpts, BINARY, DECIMAL};
+use crate::util::is_root_path_of;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
@@ -181,17 +182,7 @@ impl FileFilter {
                 .map(|x| x.date_time.is_some())
                 .unwrap_or(false),
             FileFilter::InRootPath(folder) => {
-                let folder = fix_cross_path(folder);
-                let mut path = &file_path.path as &Path;
-                while let Some(parent) = path.parent() {
-                    if parent == &folder {
-                        return true;
-                    }
-
-                    path = parent;
-                }
-
-                false
+                is_root_path_of(&file_path.path, &fix_cross_path(folder))
             }
             FileFilter::Not(f) => !f.matches(file_path),
             FileFilter::CatchAll => true,

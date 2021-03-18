@@ -18,6 +18,7 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU32, Ordering};
 use std::time::Duration;
 use walkdir::WalkDir;
+use crate::util::find_disk;
 
 mod cli;
 mod config;
@@ -119,7 +120,21 @@ fn app() -> Result<()> {
         })
         .iter()
         .for_each(|(target, size)| {
-            println!("Target '{}' [{}]", target, fmt_size(*size));
+
+            if let Some(disk_info) = config.targets.get(target).and_then(|target| find_disk(target)) {
+                println!("Target '{}' [{}] (free space: {})", target, fmt_size(*size), fmt_size(disk_info.available));
+
+                if disk_info.available < *size {
+                    eprintln!("WARNING: Free disk space on target's disk ({}) is less than data to copy (would need {} more)", disk_info.mount_point.display(), fmt_size(*size - disk_info.available));
+                    if options.continue_ {
+                        println!("Note: Continue option is enabled, space may be sufficient due to already copied files");
+                    } else if disk_info.capacity >= *size {
+                        println!("Note: Disk has enough (total) capacity (might want to free up space)");
+                    }
+                }
+            } else {
+                println!("Target '{}' [{}] (free space unknown)", target, fmt_size(*size));
+            }
         });
 
     let total = index
@@ -152,7 +167,10 @@ fn app() -> Result<()> {
         let mut buf = String::new();
         stdin().read_line(&mut buf).unwrap();
 
-        if !buf.trim().starts_with("Y") {
+        let input = buf.trim();
+        let is_yes = input.starts_with("Y") || input.starts_with("y");
+
+        if !is_yes {
             println!("Cancelled");
             return Ok(());
         }
@@ -265,7 +283,7 @@ fn walk_dir(
                 continue;
             }
 
-            println!("[{}]: {}", src_name, sub_path.display());
+            //println!("[{}]: {}", src_name, sub_path.display());
             let mut fp = FilePath::new(&src.path, sub_path);
             assert_eq!(path, fp.full_path);
 
