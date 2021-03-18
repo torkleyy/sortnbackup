@@ -5,14 +5,15 @@ use std::{
 
 use anyhow::{anyhow, Context, Result};
 use fakemap::FakeMap;
+use humansize::file_size_opts::{FileSizeOpts, BINARY, DECIMAL};
 use regex::Regex;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    date_time::DateTimeFormatString, file_path::FilePath, util::fix_cross_path,
+    date_time::DateTimeFormatString,
+    file_path::FilePath,
+    util::{fix_cross_path, is_root_path_of},
 };
-use humansize::file_size_opts::{FileSizeOpts, BINARY, DECIMAL};
-use crate::util::is_root_path_of;
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]

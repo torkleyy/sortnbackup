@@ -1,24 +1,28 @@
-use std::fs::{File, OpenOptions};
-use std::io::{stdout, Write};
+use std::{
+    collections::HashMap,
+    fs::{File, OpenOptions},
+    io::{stdin, stdout, Write},
+    path::{Path, PathBuf},
+    sync::atomic::{AtomicU32, Ordering},
+    time::Duration,
+};
 
 use anyhow::{Context as _, Result};
-use serde::{Deserialize, Serialize};
-
-use crate::cli::cli_options;
-use crate::config::{Config, Rule, Source};
-use crate::file_path::FilePath;
 use fakemap::FakeMap;
 use humansize::FileSize;
+use indicatif::{ProgressBar, ProgressStyle};
 use parking_lot::{Condvar, Mutex};
 use pathdiff::diff_paths;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
-use std::collections::HashMap;
-use std::io::stdin;
-use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicU32, Ordering};
-use std::time::Duration;
+use serde::{Deserialize, Serialize};
 use walkdir::WalkDir;
-use crate::util::find_disk;
+
+use crate::{
+    cli::cli_options,
+    config::{Config, Rule, Source},
+    file_path::FilePath,
+    util::find_disk,
+};
 
 mod cli;
 mod config;
@@ -95,7 +99,14 @@ fn app() -> Result<()> {
     println!();
 
     for (source, context) in &index {
-        if config.sources.get(source).map(|s| s.disabled).unwrap_or(false) { continue; }
+        if config
+            .sources
+            .get(source)
+            .map(|s| s.disabled)
+            .unwrap_or(false)
+        {
+            continue;
+        }
 
         println!("Source '{}'", source);
         let total: u64 = context.file_size_per_target.values().cloned().sum();
@@ -155,7 +166,11 @@ fn app() -> Result<()> {
             })
             .sum();
 
-        println!("Total data to copy (remaining): {} of {}", fmt_size(remaining), fmt_size(total));
+        println!(
+            "Total data to copy (remaining): {} of {}",
+            fmt_size(remaining),
+            fmt_size(total)
+        );
     } else {
         println!("Total data to copy: {}", fmt_size(total));
     }
@@ -176,7 +191,7 @@ fn app() -> Result<()> {
         }
     }
 
-    copy_files(&index, progress)?;
+    copy_files(&index, progress, total)?;
 
     Ok(())
 }
@@ -213,13 +228,19 @@ fn build_index(config: &Config) -> Result<Index> {
     Ok(index)
 }
 
-fn copy_files(index: &Index, progress: Progress) -> Result<()> {
+fn copy_files(index: &Index, progress: Progress, total_size: u64) -> Result<()> {
     println!("Copying files...");
 
     let mutex = Mutex::new(());
     let finished = Condvar::new();
     let finished = &finished;
     let progress = &progress;
+
+    let pb = ProgressBar::new(total_size);
+    pb.set_style(ProgressStyle::default_bar()
+        .template("{spinner:.green} [{elapsed_precise}] [{wide_bar.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+        .progress_chars("#>-"));
+    let pb = &pb;
 
     rayon::scope(|scope| {
         scope.spawn(move |_scope| {
@@ -236,11 +257,13 @@ fn copy_files(index: &Index, progress: Progress) -> Result<()> {
         index.par_iter().for_each(move |(source, context)| {
             let src_progress: &AtomicU32 = &progress[source];
 
-            for (from, CopyInstruction { to, .. }) in context
+            for (from, instr) in context
                 .copy_instructions
                 .iter()
                 .skip(src_progress.load(Ordering::SeqCst) as usize)
             {
+                let instr: &CopyInstruction = instr;
+                let to = &instr.to;
                 let _ = std::fs::create_dir_all(to.parent().unwrap());
                 if let Err(e) = std::fs::copy(from, to) {
                     eprintln!(
@@ -251,6 +274,7 @@ fn copy_files(index: &Index, progress: Progress) -> Result<()> {
                     );
                 }
                 src_progress.fetch_add(1, Ordering::SeqCst);
+                pb.inc(instr.file_size);
             }
         });
 
@@ -259,6 +283,8 @@ fn copy_files(index: &Index, progress: Progress) -> Result<()> {
 
     let _ = std::fs::remove_file("progress.yaml");
     let _ = std::fs::remove_file("index.yaml");
+
+    pb.finish_with_message("copied");
 
     println!("Copying files... Done");
 
@@ -305,7 +331,10 @@ fn walk_dir(
                 Rule::CopyExact { target } => {
                     let to = config.target(target)?.join(&fp.path);
                     let file_size = fp.metadata().map(|m| m.len()).unwrap_or(0);
-                    *context.file_size_per_target.entry(target.clone()).or_default() += file_size;
+                    *context
+                        .file_size_per_target
+                        .entry(target.clone())
+                        .or_default() += file_size;
                     context
                         .copy_instructions
                         .insert(fp.full_path, CopyInstruction { to, file_size });
@@ -313,7 +342,10 @@ fn walk_dir(
                 Rule::CopyTo { target, path } => {
                     let to = config.target_path(target, path, &mut fp)?;
                     let file_size = fp.metadata().map(|m| m.len()).unwrap_or(0);
-                    *context.file_size_per_target.entry(target.clone()).or_default() += file_size;
+                    *context
+                        .file_size_per_target
+                        .entry(target.clone())
+                        .or_default() += file_size;
                     context
                         .copy_instructions
                         .insert(fp.full_path, CopyInstruction { to, file_size });

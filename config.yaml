@@ -1,5 +1,5 @@
 settings:
-  file_size_style: decimal
+  file_size_style: binary
 
 sources:
   usb_intenso:
@@ -22,6 +22,10 @@ sources:
     disabled: true
   siege_clips:
     path: "A:\\Videos\\Tom Clancy's Rainbow Six  Siege"
+    disabled: true
+  program_files:
+    path: "C:\\Program Files\\DBeaver"
+    #disabled: true
 
 targets:
   #external_hdd: "F:\\"

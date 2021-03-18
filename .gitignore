@@ -1,5 +1,6 @@
 /target
 test_target
+*.exe
 
 index.yaml
 progress.yaml
