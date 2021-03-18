@@ -1,35 +1,22 @@
 settings:
-  file_size_style: binary
+  file_size_style: binary # for console output; binary (MiB) or decimal (MB)
 
 sources:
-  usb_intenso:
+  usb_stick:
     ignore_paths:
       - cache
       - thumbnails
-    path: "D:\\"
-    disabled: true
+    path: "F:\\"
   home_dir:
     ignore_paths:
       - AppData
     path: "C:\\Users\\John"
+  media_videos:
+    path: "A:\\Videos"
     disabled: true
-  target_folder:
-    ignore_paths:
-      - debug/incremental
-      - debug/deps
-      - debug/build
-    path: "target"
-    disabled: true
-  siege_clips:
-    path: "A:\\Videos\\Tom Clancy's Rainbow Six  Siege"
-    disabled: true
-  program_files:
-    path: "C:\\Program Files\\DBeaver"
-    #disabled: true
 
 targets:
-  #external_hdd: "F:\\"
-  test_target: "D:\\test"
+  external_hdd: "H:\\Backup"
 
 # evaluated in order, first matching filter determines file group for a file
 file_groups:
@@ -46,11 +33,39 @@ file_groups:
         - has_extension: [mp4, mkv]
     rule:
       copy_to:
-        target: "test_target"
+        target: "external_hdd"
         path:
           - file_name: "Videos"
           - file_name_with_extension
-  image_no_thumb: # copy all images with a size of 300+ to test_target's Image folder
+  documents:
+    sources: all
+    filter:
+      all:
+        - is_file
+        - any:
+            - in_folder: "Documents"
+            - has_extension: [ doc, docx, pdf ]
+    rule:
+      copy_to:
+        target: "external_hdd"
+        path:
+          - file_name: "Documents"
+          - created_time: "%Y-%m-%d"
+          - file_name_with_extension
+  json:
+    sources: all
+    filter:
+      all:
+        - is_file
+        - has_extension: [ json ]
+    rule:
+      copy_to:
+        target: "external_hdd"
+        path:
+          - file_name: "JSON"
+          - created_time: "%Y-%m-%d"
+          - file_name_with_extension
+  image_no_thumb: # copy all images with a size of 300+ to external_hdd's Image folder
     sources: all
     filter:
       all:
@@ -62,7 +77,7 @@ file_groups:
             min: 300
     rule:
       copy_to:
-        target: "test_target"
+        target: "external_hdd"
         path:
           - file_name: "Images"
           - img_date_time: "%Y-%m"
@@ -79,7 +94,7 @@ file_groups:
             min: 300
     rule:
       copy_to:
-        target: "test_target"
+        target: "external_hdd"
         path:
           - file_name: "Images"
           - file_extension
@@ -93,45 +108,17 @@ file_groups:
         - has_img_metadata # image metadata can be expensive to read, so put this filter as far down as possible
     rule:
       copy_to:
-        target: "test_target"
+        target: "external_hdd"
         path:
           - file_name: "Thumbnails"
           - file_extension
-          - file_name_with_extension
-  documents:
-    sources: all
-    filter:
-      all:
-        - is_file
-        - any:
-            - in_folder: "Documents"
-            - has_extension: [ doc, docx, pdf ]
-    rule:
-      copy_to:
-        target: "test_target"
-        path:
-          - file_name: "Documents"
-          - created_time: "%Y-%m-%d"
-          - file_name_with_extension
-  json:
-    sources: all
-    filter:
-      all:
-        - is_file
-        - has_extension: [ json ]
-    rule:
-      copy_to:
-        target: "test_target"
-        path:
-          - file_name: "JSON"
-          - created_time: "%Y-%m-%d"
           - file_name_with_extension
   misc: # match all files that had no other filter matching them (otherwise they would be ignored)
     sources: all
     filter: is_file
     rule:
       copy_to: # default would be "ignore" (if no file group would match)
-        target: "test_target"
+        target: "external_hdd"
         path:
           - file_name: "Misc"
           - original_path

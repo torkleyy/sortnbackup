@@ -130,6 +130,8 @@ pub enum FileFilter {
     ImmediateParent(String),
     #[serde(rename = "has_extension")]
     HasExtension(Vec<String>),
+    #[serde(rename = "file_name")]
+    FileName(String),
     #[serde(rename = "file_name_matches_regex")]
     FileNameMatchesRegex(#[serde(with = "serde_regex")] Regex),
     #[serde(rename = "path_matches_regex")]
@@ -190,6 +192,13 @@ impl FileFilter {
             FileFilter::IsFile => file_path.full_path.is_file(),
             FileFilter::IsDir => file_path.full_path.is_dir(),
             FileFilter::ImmediateParent(p) => file_path.path.parent().unwrap() == Path::new(p),
+            FileFilter::FileName(file_name) => {
+                if let Some(actual) = file_path.path.file_name().and_then(|s| s.to_str()) {
+                    file_name.eq_ignore_ascii_case(actual)
+                } else {
+                    false
+                }
+            }
         }
     }
 }
