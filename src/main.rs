@@ -225,6 +225,7 @@ fn build_index(config: &Config) -> Result<Index> {
             println!("Building index for source '{}'...", name);
 
             let pb = multi_progress_bar.add(ProgressBar::new_spinner());
+            pb.enable_steady_tick(120);
             pb.set_style(sty.clone());
             pb.set_message(&format!("{}...", name));
 

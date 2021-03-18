@@ -1,6 +1,6 @@
 [package]
 name = "sortnbackup"
-version = "0.1.0"
+version = "1.0.0"
 authors = ["Thomas Schaller <me@torkleyy.com>"]
 edition = "2018"
 

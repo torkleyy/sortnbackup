@@ -1,11 +1,8 @@
 use std::{
-    fs,
     fs::canonicalize,
-    io,
     path::{Path, PathBuf},
 };
 
-use anyhow::{anyhow, Context};
 use sysinfo::{DiskExt, RefreshKind, System, SystemExt};
 
 pub fn fix_cross_path(path: &str) -> PathBuf {
@@ -14,6 +11,7 @@ pub fn fix_cross_path(path: &str) -> PathBuf {
         .into()
 }
 
+/*
 pub fn dir_size(path: &Path) -> anyhow::Result<u64> {
     fn dir_size(path: &Path) -> io::Result<u64> {
         fn dir_size(mut dir: fs::ReadDir) -> io::Result<u64> {
@@ -32,6 +30,7 @@ pub fn dir_size(path: &Path) -> anyhow::Result<u64> {
 
     dir_size(path).with_context(|| anyhow!("failed to calc dir size of {}", path.display()))
 }
+*/
 
 pub fn is_root_path_of(path: &Path, root: &Path) -> bool {
     let mut path = path;
