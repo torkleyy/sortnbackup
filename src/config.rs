@@ -230,6 +230,8 @@ pub enum Rule {
 pub enum PathElement {
     #[serde(rename = "file_name")]
     FileName(String),
+    #[serde(rename = "merge_strings")]
+    MergeStrings(Vec<PathElement>),
     #[serde(rename = "original_path")]
     OriginalPath,
     #[serde(rename = "original_path_without_file_name")]
@@ -299,6 +301,9 @@ impl PathElement {
             PathElement::ModifiedTime(fmt) => fmt
                 .fmt_systime(fp.metadata().ok_or(anyhow!("No fs metadata"))?.modified()?)
                 .into(),
+            PathElement::MergeStrings(vec) => {
+                vec.iter().map(|x| x.to_path(fp).map(|p| p.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default())).collect::<Result<String>>()?.into()
+            }
         })
     }
 }
@@ -319,5 +324,20 @@ mod tests {
         assert!(!InRootPath("src".to_owned()).matches(&mut fp));
         assert!(!InRootPath("foo".to_owned()).matches(&mut fp));
         assert!(!InRootPath("bar".to_owned()).matches(&mut fp));
+    }
+
+    #[test]
+    fn test_merge_strings() {
+        use PathElement::{MergeStrings, FileNameWithoutExtension, FileName};
+
+        let mut fp = FilePath::new("src", "lala/foo/bar");
+
+        let path = MergeStrings(vec![
+            FileName("hello_".to_owned()),
+            FileNameWithoutExtension,
+            FileName("_world".to_owned())
+        ]).to_path(&mut fp).unwrap().display().to_string();
+
+        assert_eq!("hello_bar_world", path);
     }
 }

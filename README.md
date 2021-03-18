@@ -321,6 +321,21 @@ file_name: "log.txt"
 file_name: "Images"
 ```
 
+#### `merge_strings`
+
+Merge multiple path elements together to generate a single file name / directory.
+If path elements were written out in flat, each element generated a directory.
+
+```yaml
+merge_strings:
+  - file_name: "file_"
+  - file_name_without_extension
+  - file_name: "_"
+  - file_extension
+  - file_name: "."
+  - file_extension
+```
+
 #### `original_path`
 
 The path of the file / directory relative to the source.
