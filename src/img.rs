@@ -1,7 +1,7 @@
 use std::{fs::File, io::BufReader, path::Path, str::FromStr};
 
-use chrono::Local;
-use exif::{Field, In, Tag, Value};
+use chrono::{Local, Utc, TimeZone};
+use exif::{Field, In, Tag, Value, Exif};
 use immeta::Dimensions;
 use serde::{Deserialize, Serialize};
 
@@ -33,48 +33,78 @@ impl From<immeta::Dimensions> for ImageDimensions {
 #[derive(Clone, Debug)]
 pub struct ImageMetadata {
     pub date_time: Option<chrono::DateTime<Local>>,
+    pub camera_make: Option<String>,
+    pub camera_model: Option<String>,
     pub dimensions: ImageDimensions,
 }
 
 impl ImageMetadata {
-    fn from_immeta(path: &Path) -> Option<Self> {
-        Some(ImageMetadata {
-            dimensions: immeta::load_from_file(path).ok()?.dimensions().into(),
+    fn from_immeta(path: &Path) -> anyhow::Result<Self> {
+        Ok(ImageMetadata {
+            dimensions: immeta::load_from_file(path)?.dimensions().into(),
             date_time: None,
+            camera_make: None,
+            camera_model: None
         })
     }
 
     pub fn for_path(path: &Path) -> Option<Self> {
-        let file = File::open(path).ok()?;
+        Self::for_path_inner(path).ok()
+    }
+
+    fn for_path_inner(path: &Path) -> anyhow::Result<Self> {
+        let file = File::open(path)?;
         let exif = match exif::Reader::new().read_from_container(&mut BufReader::new(&file)) {
             Ok(x) => x,
             Err(exif::Error::NotFound(_)) => return Self::from_immeta(path),
-            _ => return None,
+            Err(e) => return Err(e.into()),
         };
 
-        let width = exif
-            .get_field(Tag::ImageWidth, In::PRIMARY)?
-            .value
-            .get_uint(0)?;
-        let height = exif
-            .get_field(Tag::ImageLength, In::PRIMARY)?
-            .value
-            .get_uint(0)?;
+        let dimensions = match get_exif_dimensions(&exif) {
+            Some(d) => d,
+            None => {
+                Self::from_immeta(path).map(|m| m.dimensions)?
+            }
+        };
 
-        Some(ImageMetadata {
-            dimensions: ImageDimensions { width, height },
-            date_time: get_date_time(exif.get_field(Tag::DateTime, In::PRIMARY)),
+        Ok(ImageMetadata {
+            dimensions,
+            date_time: get_date_time(exif.get_field(Tag::DateTime, In::PRIMARY).or(exif.get_field(Tag::DateTimeOriginal, In::PRIMARY)).or(exif.get_field(Tag::DateTimeDigitized, In::PRIMARY))),
+            camera_make: get_string(exif.get_field(Tag::Make, In::PRIMARY)),
+            camera_model: get_string(exif.get_field(Tag::Model, In::PRIMARY)),
         })
     }
 }
 
+fn get_exif_dimensions(exif: &Exif) -> Option<ImageDimensions> {
+    let width = exif
+        .get_field(Tag::ImageWidth, In::PRIMARY)?
+        .value
+        .get_uint(0)?;
+    let height = exif
+        .get_field(Tag::ImageLength, In::PRIMARY)?
+        .value
+        .get_uint(0)?;
+
+    Some(ImageDimensions {
+        width,
+        height
+    })
+}
+
 fn get_date_time(value: Option<&Field>) -> Option<chrono::DateTime<Local>> {
+    Some(Local.datetime_from_str(get_str(value)?, "%Y:%m:%d %H:%M:%S").unwrap().into())
+}
+
+fn get_str(value: Option<&Field>) -> Option<&str> {
     match &value.as_ref()?.value {
         Value::Ascii(v) => {
-            let s = std::str::from_utf8(v.get(0)?).ok()?;
-
-            chrono::DateTime::from_str(s).ok()
+            std::str::from_utf8(v.get(0)?).ok()
         }
         _ => None,
     }
+}
+
+fn get_string(value: Option<&Field>) -> Option<String> {
+    get_str(value).map(ToOwned::to_owned)
 }
