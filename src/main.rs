@@ -23,6 +23,8 @@ use crate::{
     file_path::FilePath,
     util::find_disk,
 };
+use md5::Digest;
+use std::collections::hash_map::Entry;
 
 mod cli;
 mod config;
@@ -31,11 +33,43 @@ mod file_path;
 mod img;
 mod util;
 
-#[derive(Default, Deserialize, Serialize)]
+#[derive(Default)]
 struct Context {
-    ignored: Vec<PathBuf>,
+    copy_instructions: FakeMap<PathBuf, CopyInstruction>,
+    files_added_with_duplicate_filter: HashMap<Digest, PathBuf>,
+    file_size_per_target: HashMap<String, u64>,
+}
+
+impl Context {
+    pub fn check_duplicate(&mut self, path: &Path) -> Result<bool> {
+        let bytes = std::fs::read(path).with_context(|| format!("could not read file {}", path.display()))?;
+        let digest = md5::compute(bytes);
+
+        match self.files_added_with_duplicate_filter.entry(digest) {
+            Entry::Occupied(_) => {
+                Ok(true)
+            }
+            Entry::Vacant(entry) => {
+                entry.insert(path.to_owned());
+                Ok(false)
+            }
+        }
+    }
+}
+
+#[derive(Default, Deserialize, Serialize)]
+struct SourceIndex {
     copy_instructions: FakeMap<PathBuf, CopyInstruction>,
     file_size_per_target: HashMap<String, u64>,
+}
+
+impl From<Context> for SourceIndex {
+    fn from(c: Context) -> Self {
+        SourceIndex {
+            copy_instructions: c.copy_instructions,
+            file_size_per_target: c.file_size_per_target
+        }
+    }
 }
 
 #[derive(Deserialize, Serialize)]
@@ -44,7 +78,7 @@ struct CopyInstruction {
     file_size: u64,
 }
 
-type Index = HashMap<String, Context>;
+type Index = HashMap<String, SourceIndex>;
 
 type Progress = HashMap<String, AtomicU32>;
 
@@ -237,9 +271,9 @@ fn build_index(config: &Config) -> Result<Index> {
 
             println!("Building index for source '{}'... Done", name);
 
-            Ok((name.to_owned(), context))
+            Ok((name.to_owned(), context.into()))
         })
-        .collect::<Result<HashMap<String, Context>>>()?;
+        .collect::<Result<Index>>()?;
 
     serde_yaml::to_writer(
         File::create("index.yaml").with_context(|| format!("cannot create index.yaml"))?,
@@ -331,7 +365,7 @@ fn walk_dir(
 
             if src.ignore_paths.iter().any(|x| *x == sub_path) {
                 //println!("[{}]: Ignore {}", src_name, sub_path.display());
-                context.ignored.push(sub_path);
+                //context.ignored.push(sub_path);
                 continue;
             }
 
@@ -354,9 +388,11 @@ fn walk_dir(
 
             match rule {
                 Rule::Ignore => {
-                    context.ignored.push(fp.full_path);
                 }
-                Rule::CopyExact { target } => {
+                Rule::CopyExact { target, skip_duplicates: ignore_duplicates } => {
+                    if *ignore_duplicates && context.check_duplicate(&fp.full_path)? {
+                        return Ok(());
+                    }
                     let to = config.target(target)?.join(&fp.path);
                     let file_size = fp.metadata().map(|m| m.len()).unwrap_or(0);
                     *context
@@ -367,7 +403,10 @@ fn walk_dir(
                         .copy_instructions
                         .insert(fp.full_path, CopyInstruction { to, file_size });
                 }
-                Rule::CopyTo { target, path } => {
+                Rule::CopyTo { target, path, skip_duplicates: ignore_duplicates } => {
+                    if *ignore_duplicates && context.check_duplicate(&fp.full_path)? {
+                        return Ok(());
+                    }
                     let to = config.target_path(target, path, &mut fp)?;
                     let file_size = fp.metadata().map(|m| m.len()).unwrap_or(0);
                     *context

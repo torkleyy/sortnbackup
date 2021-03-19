@@ -209,11 +209,17 @@ pub enum Rule {
     #[serde(rename = "ignore")]
     Ignore,
     #[serde(rename = "copy_exact")]
-    CopyExact { target: String },
+    CopyExact {
+        target: String,
+        #[serde(default)]
+        skip_duplicates: bool,
+    },
     #[serde(rename = "copy_to")]
     CopyTo {
         target: String,
         path: Vec<PathElement>,
+        #[serde(default)]
+        skip_duplicates: bool,
     },
     #[serde(rename = "traverse")]
     Traverse,
