@@ -146,11 +146,11 @@ fn app() -> Result<()> {
 
         println!("Source '{}'", source);
         let total: u64 = context.file_size_per_target.values().cloned().sum();
-        println!("\tData to copy [all targets]: {}", fmt_size(total));
+        println!("  Data to copy [all targets]: {}", fmt_size(total));
         if total > 0 {
-            println!("\tData per target:");
+            println!("  Data per target:");
             for (target, size) in context.file_size_per_target.iter() {
-                println!("\t\tTo target '{}': {}", target, fmt_size(*size));
+                println!("    To target '{}': {}", target, fmt_size(*size));
             }
         }
     }
