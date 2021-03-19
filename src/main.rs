@@ -42,13 +42,11 @@ struct Context {
 
 impl Context {
     pub fn check_duplicate(&mut self, path: &Path) -> Result<bool> {
-        let bytes = std::fs::read(path)
-            .with_context(|| format!("could not read file {}", path.display()))?;
+        let bytes = std::fs::read(path).with_context(|| format!("could not read file {}", path.display()))?;
         let digest = md5::compute(bytes);
 
         match self.files_added_with_duplicate_filter.entry(digest) {
             Entry::Occupied(_) => {
-                println!("Found duplicate: {}", path.display());
                 Ok(true)
             }
             Entry::Vacant(entry) => {
@@ -69,7 +67,7 @@ impl From<Context> for SourceIndex {
     fn from(c: Context) -> Self {
         SourceIndex {
             copy_instructions: c.copy_instructions,
-            file_size_per_target: c.file_size_per_target,
+            file_size_per_target: c.file_size_per_target
         }
     }
 }
@@ -389,13 +387,11 @@ fn walk_dir(
             pb.tick();
 
             match rule {
-                Rule::Ignore => {}
-                Rule::CopyExact {
-                    target,
-                    skip_duplicates: ignore_duplicates,
-                } => {
+                Rule::Ignore => {
+                }
+                Rule::CopyExact { target, skip_duplicates: ignore_duplicates } => {
                     if *ignore_duplicates && context.check_duplicate(&fp.full_path)? {
-                        continue;
+                        return Ok(());
                     }
                     let to = config.target(target)?.join(&fp.path);
                     let file_size = fp.metadata().map(|m| m.len()).unwrap_or(0);
@@ -407,13 +403,9 @@ fn walk_dir(
                         .copy_instructions
                         .insert(fp.full_path, CopyInstruction { to, file_size });
                 }
-                Rule::CopyTo {
-                    target,
-                    path,
-                    skip_duplicates: ignore_duplicates,
-                } => {
+                Rule::CopyTo { target, path, skip_duplicates: ignore_duplicates } => {
                     if *ignore_duplicates && context.check_duplicate(&fp.full_path)? {
-                        continue;
+                        return Ok(());
                     }
                     let to = config.target_path(target, path, &mut fp)?;
                     let file_size = fp.metadata().map(|m| m.len()).unwrap_or(0);
