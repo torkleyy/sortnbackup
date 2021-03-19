@@ -7,16 +7,17 @@ sources:
       - cache
       - thumbnails
     path: "F:\\"
+    disabled: true
   home_dir:
     ignore_paths:
       - AppData
-    path: "C:\\Users\\John"
+    path: "C:\\Users\\Privacy Guy\\Documents"
   media_videos:
     path: "A:\\Videos"
     disabled: true
 
 targets:
-  external_hdd: "H:\\Backup"
+  external_hdd: "test_target"
 
 # evaluated in order, first matching filter determines file group for a file
 file_groups:
@@ -60,6 +61,7 @@ file_groups:
         - has_extension: [ json ]
     rule:
       copy_to:
+        skip_duplicates: true
         target: "external_hdd"
         path:
           - file_name: "JSON"
@@ -74,7 +76,7 @@ file_groups:
         - has_img_metadata # image metadata can be expensive to read, so put this filter as far down as possible
         - has_img_date_time # implies "has_img_metadata", and should be used if img_date_time is used in rule
         - img_size:
-            min: 300
+            min: 128
     rule:
       copy_to:
         target: "external_hdd"
@@ -91,7 +93,7 @@ file_groups:
         - has_extension: [ png, jpg, jpeg ]
         - has_img_metadata # image metadata can be expensive to read, so put this filter as far down as possible
         - img_size:
-            min: 300
+            min: 128
     rule:
       copy_to:
         target: "external_hdd"
@@ -113,16 +115,21 @@ file_groups:
           - file_name: "Thumbnails"
           - file_extension
           - file_name_with_extension
-  misc: # match all files that had no other filter matching them (otherwise they would be ignored)
+  img_no_img_meta: # copy thumbnails (all remaining images)
     sources: all
-    filter: is_file
+    filter:
+      all:
+        - is_file
+        - has_extension: [ png, jpg, jpeg ]
     rule:
-      copy_to: # default would be "ignore" (if no file group would match)
+      copy_to:
         target: "external_hdd"
         path:
-          - file_name: "Misc"
-          - original_path
-  traverse_folders: # match all folders that had no other filter matching them
+          - file_name: "Images"
+          - file_name: "nometa"
+          - file_extension
+          - file_name_with_extension
+  ignore_folders: # match all folders that had no other filter matching them
     sources: all
     filter: is_dir
-    rule: traverse # default is "traverse" (so this group could be deleted without any effect)
+    rule: ignore # default is "traverse" (so this group could be deleted without any effect)

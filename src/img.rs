@@ -1,7 +1,7 @@
-use std::{fs::File, io::BufReader, path::Path, str::FromStr};
+use std::{fs::File, io::BufReader, path::Path};
 
-use chrono::{Local, Utc, TimeZone};
-use exif::{Field, In, Tag, Value, Exif};
+use chrono::{Local, TimeZone};
+use exif::{Exif, Field, In, Tag, Value};
 use immeta::Dimensions;
 use serde::{Deserialize, Serialize};
 
@@ -44,7 +44,7 @@ impl ImageMetadata {
             dimensions: immeta::load_from_file(path)?.dimensions().into(),
             date_time: None,
             camera_make: None,
-            camera_model: None
+            camera_model: None,
         })
     }
 
@@ -62,14 +62,16 @@ impl ImageMetadata {
 
         let dimensions = match get_exif_dimensions(&exif) {
             Some(d) => d,
-            None => {
-                Self::from_immeta(path).map(|m| m.dimensions)?
-            }
+            None => Self::from_immeta(path).map(|m| m.dimensions)?,
         };
 
         Ok(ImageMetadata {
             dimensions,
-            date_time: get_date_time(exif.get_field(Tag::DateTime, In::PRIMARY).or(exif.get_field(Tag::DateTimeOriginal, In::PRIMARY)).or(exif.get_field(Tag::DateTimeDigitized, In::PRIMARY))),
+            date_time: get_date_time(
+                exif.get_field(Tag::DateTime, In::PRIMARY)
+                    .or(exif.get_field(Tag::DateTimeOriginal, In::PRIMARY))
+                    .or(exif.get_field(Tag::DateTimeDigitized, In::PRIMARY)),
+            ),
             camera_make: get_string(exif.get_field(Tag::Make, In::PRIMARY)),
             camera_model: get_string(exif.get_field(Tag::Model, In::PRIMARY)),
         })
@@ -86,21 +88,21 @@ fn get_exif_dimensions(exif: &Exif) -> Option<ImageDimensions> {
         .value
         .get_uint(0)?;
 
-    Some(ImageDimensions {
-        width,
-        height
-    })
+    Some(ImageDimensions { width, height })
 }
 
 fn get_date_time(value: Option<&Field>) -> Option<chrono::DateTime<Local>> {
-    Some(Local.datetime_from_str(get_str(value)?, "%Y:%m:%d %H:%M:%S").unwrap().into())
+    Some(
+        Local
+            .datetime_from_str(get_str(value)?, "%Y:%m:%d %H:%M:%S")
+            .unwrap()
+            .into(),
+    )
 }
 
 fn get_str(value: Option<&Field>) -> Option<&str> {
     match &value.as_ref()?.value {
-        Value::Ascii(v) => {
-            std::str::from_utf8(v.get(0)?).ok()
-        }
+        Value::Ascii(v) => std::str::from_utf8(v.get(0)?).ok(),
         _ => None,
     }
 }
