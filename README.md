@@ -74,6 +74,7 @@ file_groups:
           - file_name: "Documents"
           - created_time: "%Y-%m-%d"
           - file_name_with_extension
+       skip_duplicates: true # build md5 hash and skip duplicates
   json:
     sources: all
     filter:
