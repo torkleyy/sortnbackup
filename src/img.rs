@@ -92,9 +92,13 @@ fn get_exif_dimensions(exif: &Exif) -> Option<ImageDimensions> {
 }
 
 fn get_date_time(value: Option<&Field>) -> Option<chrono::DateTime<Local>> {
-    match Local.datetime_from_str(get_str(value)?, "%Y:%m:%d %H:%M:%S") {
+    let str = get_str(value)?;
+    match Local.datetime_from_str(str, "%Y:%m:%d %H:%M:%S") {
         Ok(x) => Some(x),
-        Err(_) => None,
+        Err(_) => {
+            println!("Unexpected datetime value: {:?}", str);
+            None
+        },
     }
 }
 
