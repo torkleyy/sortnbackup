@@ -92,12 +92,9 @@ fn get_exif_dimensions(exif: &Exif) -> Option<ImageDimensions> {
 }
 
 fn get_date_time(value: Option<&Field>) -> Option<chrono::DateTime<Local>> {
-    Some(
-        Local
-            .datetime_from_str(get_str(value)?, "%Y:%m:%d %H:%M:%S")
-            .unwrap()
-            .into(),
-    )
+    Local
+        .datetime_from_str(get_str(value)?, "%Y:%m:%d %H:%M:%S")
+        .ok()
 }
 
 fn get_str(value: Option<&Field>) -> Option<&str> {

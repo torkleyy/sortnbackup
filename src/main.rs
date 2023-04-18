@@ -42,13 +42,12 @@ struct Context {
 
 impl Context {
     pub fn check_duplicate(&mut self, path: &Path) -> Result<bool> {
-        let bytes = std::fs::read(path).with_context(|| format!("could not read file {}", path.display()))?;
+        let bytes = std::fs::read(path)
+            .with_context(|| format!("could not read file {}", path.display()))?;
         let digest = md5::compute(bytes);
 
         match self.files_added_with_duplicate_filter.entry(digest) {
-            Entry::Occupied(_) => {
-                Ok(true)
-            }
+            Entry::Occupied(_) => Ok(true),
             Entry::Vacant(entry) => {
                 entry.insert(path.to_owned());
                 Ok(false)
@@ -67,7 +66,7 @@ impl From<Context> for SourceIndex {
     fn from(c: Context) -> Self {
         SourceIndex {
             copy_instructions: c.copy_instructions,
-            file_size_per_target: c.file_size_per_target
+            file_size_per_target: c.file_size_per_target,
         }
     }
 }
@@ -246,7 +245,8 @@ fn build_index(config: &Config) -> Result<Index> {
             "▹▹▹▹▸",
             "▪▪▪▪▪",
         ])
-        .template("{spinner:.blue} {msg}");
+        .template("{spinner:.blue} {msg}")
+        .unwrap();
 
     let index = config
         .sources
@@ -259,15 +259,15 @@ fn build_index(config: &Config) -> Result<Index> {
             println!("Building index for source '{}'...", name);
 
             let pb = multi_progress_bar.add(ProgressBar::new_spinner());
-            pb.enable_steady_tick(120);
+            pb.enable_steady_tick(Duration::from_secs(120));
             pb.set_style(sty.clone());
-            pb.set_message(&format!("{}...", name));
+            pb.set_message(format!("{}...", name));
 
             let mut context = Default::default();
 
             walk_dir(&config, name, source, &source.path, &mut context, &pb)?;
 
-            pb.finish_with_message(&format!("{}... Done", name));
+            pb.finish_with_message(format!("{}... Done", name));
 
             println!("Building index for source '{}'... Done", name);
 
@@ -280,7 +280,7 @@ fn build_index(config: &Config) -> Result<Index> {
         &index,
     )?;
 
-    multi_progress_bar.join_and_clear().unwrap();
+    multi_progress_bar.clear().unwrap();
 
     println!("Building indices... Done (saved to index.yaml)");
 
@@ -298,6 +298,7 @@ fn copy_files(index: &Index, progress: Progress, total_size: u64) -> Result<()> 
     let pb = ProgressBar::new(total_size);
     pb.set_style(ProgressStyle::default_bar()
         .template("{spinner:.green} [{elapsed_precise}] [{wide_bar.cyan/blue}] {bytes}/{total_bytes} ({eta})")
+        .unwrap()
         .progress_chars("#>-"));
     let pb = &pb;
 
@@ -387,9 +388,11 @@ fn walk_dir(
             pb.tick();
 
             match rule {
-                Rule::Ignore => {
-                }
-                Rule::CopyExact { target, skip_duplicates: ignore_duplicates } => {
+                Rule::Ignore => {}
+                Rule::CopyExact {
+                    target,
+                    skip_duplicates: ignore_duplicates,
+                } => {
                     if *ignore_duplicates && context.check_duplicate(&fp.full_path)? {
                         return Ok(());
                     }
@@ -403,7 +406,11 @@ fn walk_dir(
                         .copy_instructions
                         .insert(fp.full_path, CopyInstruction { to, file_size });
                 }
-                Rule::CopyTo { target, path, skip_duplicates: ignore_duplicates } => {
+                Rule::CopyTo {
+                    target,
+                    path,
+                    skip_duplicates: ignore_duplicates,
+                } => {
                     if *ignore_duplicates && context.check_duplicate(&fp.full_path)? {
                         return Ok(());
                     }
