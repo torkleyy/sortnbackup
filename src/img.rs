@@ -67,11 +67,14 @@ impl ImageMetadata {
 
         Ok(ImageMetadata {
             dimensions,
-            date_time: get_date_time(
+            date_time: match get_date_time(
                 exif.get_field(Tag::DateTime, In::PRIMARY)
                     .or(exif.get_field(Tag::DateTimeOriginal, In::PRIMARY))
                     .or(exif.get_field(Tag::DateTimeDigitized, In::PRIMARY)),
-            ),
+            ) {
+                Some(x) => Some(x),
+                None => None,
+            },
             camera_make: get_string(exif.get_field(Tag::Make, In::PRIMARY)),
             camera_model: get_string(exif.get_field(Tag::Model, In::PRIMARY)),
         })
@@ -92,12 +95,10 @@ fn get_exif_dimensions(exif: &Exif) -> Option<ImageDimensions> {
 }
 
 fn get_date_time(value: Option<&Field>) -> Option<chrono::DateTime<Local>> {
-    Some(
-        Local
-            .datetime_from_str(get_str(value)?, "%Y:%m:%d %H:%M:%S")
-            .unwrap()
-            .into(),
-    )
+    match Local.datetime_from_str(get_str(value)?, "%Y:%m:%d %H:%M:%S") {
+        Ok(x) => Some(x),
+        Err(_) => None,
+    }
 }
 
 fn get_str(value: Option<&Field>) -> Option<&str> {
