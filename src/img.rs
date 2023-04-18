@@ -67,14 +67,11 @@ impl ImageMetadata {
 
         Ok(ImageMetadata {
             dimensions,
-            date_time: match get_date_time(
+            date_time: get_date_time(
                 exif.get_field(Tag::DateTime, In::PRIMARY)
                     .or(exif.get_field(Tag::DateTimeOriginal, In::PRIMARY))
                     .or(exif.get_field(Tag::DateTimeDigitized, In::PRIMARY)),
-            ) {
-                Some(x) => Some(x),
-                None => None,
-            },
+            ),
             camera_make: get_string(exif.get_field(Tag::Make, In::PRIMARY)),
             camera_model: get_string(exif.get_field(Tag::Model, In::PRIMARY)),
         })
